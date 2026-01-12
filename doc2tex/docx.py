@@ -1,15 +1,15 @@
-# Handles converting latex back to docx
-# This is even harder because latex uses many packages and custom commands
-# So it just handles the basics for now
+# doc2tex - LaTeX to Word conversion logic
+# To be honest, this way is harder because LaTeX is basically a programming language.
+# I'm using regex to find the main parts, it's not perfect but it handles 
+# normal documents pretty well.
 
 import os
 import re
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from pathlib import Path
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-from docx.enum.style import WD_STYLE_TYPE
 
 from .options import ConversionOptions
 from .utils import unescape_latex, logger, ensure_directory
@@ -17,227 +17,222 @@ from .errors import ConversionError
 
 
 class DocxGenerator:
-    # This class takes latex code and tries to turn it into a word doc
+    """
+    My class for generating Word docs from LaTeX.
+    It's basically a simple parser that looks for commands like \section or \textbf.
+    """
     
     def __init__(self, options: ConversionOptions):
         self.options = options
-        self.doc = None
+        self.word_doc = None
         
-    def convert(self, input_path: str, output_path: str) -> str:
-        # Main function for latex to docx
+    def convert(self, tex_file: str, docx_file: str) -> str:
+        # Tries to turn your .tex into a .docx
         try:
-            logger.info(f"Converting LaTeX to DOCX: {input_path}")
+            logger.info(f"Trying to read {tex_file}...")
             
-            # Read the whole latex file as text
-            with open(input_path, 'r', encoding=self.options.output_encoding) as f:
-                latex_content = f.read()
+            # Read all the text
+            with open(tex_file, 'r', encoding=self.options.output_encoding) as f:
+                raw_tex = f.read()
             
-            # Start a fresh word doc
-            self.doc = Document()
+            # Create a blank Word document
+            self.word_doc = Document()
             
-            # Set the font and size based on options
-            self._setup_document_styles()
+            # Set the font to something standard (students love Times New Roman)
+            self._apply_student_styles()
             
-            # Parse the latex content and build the doc
-            self._parse_latex(latex_content)
+            # This is where the magic (or mess) happens
+            self._parse_and_build(raw_tex)
             
-            # Save the final file
-            self.doc.save(output_path)
+            # Save the result
+            self.word_doc.save(docx_file)
+            logger.info(f"Nice! Saved the word doc to {docx_file}")
             
-            return output_path
+            return docx_file
             
-        except Exception as e:
-            raise ConversionError(f"Failed to create DOCX from LaTeX: {e}")
-    
-    def _setup_document_styles(self) -> None:
-        # Just setting defaults so it looks decent
-        style = self.doc.styles['Normal']
-        font = style.font
-        font.name = 'Times New Roman'
+        except Exception as err:
+            logger.error(f"LaTeX parsing failed: {err}")
+            raise ConversionError(f"Something went wrong reading the LaTeX file: {err}")
+
+    def _apply_student_styles(self) -> None:
+        # Setup the document styles to look like a standard report
+        style = self.word_doc.styles['Normal']
+        f = style.font
+        f.name = 'Times New Roman'
         
-        # Pull font size from our options, defaulting to 12 if something breaks
+        # Pull font size from options (usually 12pt)
         try:
-            font_size_str = self.options.font_size.value
-            font_size = int(font_size_str.replace('pt', ''))
-            font.size = Pt(font_size)
+             # Just stripping 'pt' if it's there
+             sz = int(self.options.font_size.value.replace('pt', ''))
+             f.size = Pt(sz)
         except:
-            font.size = Pt(12)
-    
-    def _parse_latex(self, content: str) -> None:
-        # Tries to ignore the preamble and focus on what's between \begin{document}
-        doc_match = re.search(r'\\begin\{document\}(.*?)\\end\{document\}', content, re.DOTALL)
-        if doc_match:
-            content = doc_match.group(1)
+             f.size = Pt(12) # fallback
+
+    def _parse_and_build(self, content: str) -> None:
+        # We only really care about stuff inside \begin{document}
+        # If we can't find it, we just take everything
+        pattern = r'\\begin\{document\}(.*?)\\end\{document\}'
+        match = re.search(pattern, content, re.DOTALL)
         
-        # Break content into chunks (paragraphs/sections)
-        blocks = self._split_into_blocks(content)
-        
-        for block in blocks:
-            self._process_block(block)
-    
-    def _split_into_blocks(self, content: str) -> List[str]:
-        # Simple split by double newlines - usually how paragraphs work
-        blocks = re.split(r'\n\s*\n', content)
-        return [block.strip() for block in blocks if block.strip()]
-    
-    def _process_block(self, block: str) -> None:
-        # Decide what kind of latex command this block is
-        if block.startswith('\\section'):
-            self._process_section(block, level=1)
-        elif block.startswith('\\subsection'):
-            self._process_section(block, level=2)
-        elif block.startswith('\\subsubsection'):
-            self._process_section(block, level=3)
-        
-        # Environments
-        elif '\\begin{table}' in block:
-            self._process_table(block)
-        elif '\\begin{figure}' in block:
-            self._process_figure(block)
-        elif '\\begin{itemize}' in block or '\\begin{enumerate}' in block:
-            self._process_list(block)
-        elif '\\begin{center}' in block:
-            self._process_centered_text(block)
-        
-        # Just a normal paragraph of text
+        if match:
+            doc_body = match.group(1).strip()
         else:
-            self._process_paragraph(block)
-    
-    def _process_section(self, block: str, level: int) -> None:
-        # Grab the title inside the brackets
-        match = re.search(r'\\(?:sub)*section\{([^}]+)\}', block)
-        if not match:
-            return
+            # Maybe it's just a snippet?
+            doc_body = content.strip()
+            
+        # I split the body into blocks by double newlines
+        # This usually means separate paragraphs or sections in LaTeX
+        blocks = re.split(r'\n\s*\n', doc_body)
         
-        title = unescape_latex(match.group(1))
+        for bk in blocks:
+            bk = bk.strip()
+            if not bk:
+                continue
+                
+            # Figure out what this block is
+            if bk.startswith('\\section'):
+                self._add_heading(bk, 1)
+            elif bk.startswith('\\subsection'):
+                self._add_heading(bk, 2)
+            elif bk.startswith('\\subsubsection'):
+                self._add_heading(bk, 3)
+            elif '\\begin{table}' in bk:
+                self._add_table(bk)
+            elif '\\begin{figure}' in bk:
+                self._add_image(bk)
+            elif '\\begin{itemize}' in bk or '\\begin{enumerate}' in bk:
+                self._add_list(bk)
+            elif '\\begin{center}' in bk:
+                self._add_centered(bk)
+            else:
+                # If it's none of the above, it's probably just a normal paragraph
+                self._add_paragraph(bk)
+
+    def _add_heading(self, block: str, level: int) -> None:
+        # Extract text from \section{...} or \subsection{...}
+        m = re.search(r'\\(?:sub)*section\{([^}]+)\}', block)
+        if m:
+            title = unescape_latex(m.group(1))
+            self.word_doc.add_heading(title, level=level)
+
+    def _add_paragraph(self, block: str) -> None:
+        # Handles text along with inline styles like bold/italic
+        p = self.word_doc.add_paragraph()
+        self._apply_inline(block, p)
+
+    def _apply_inline(self, text: str, para_obj) -> None:
+        # This is my favorite part: a simple inline 'parser'
+        # It looks for formatting tags and adds them as 'runs'
         
-        # Word has built-in heading styles 1, 2, 3...
-        self.doc.add_heading(title, level=level)
-    
-    def _process_paragraph(self, block: str) -> None:
-        if not block.strip():
-            return
-        
-        # Add a new paragraph and then look for bold/italics inside it
-        paragraph = self.doc.add_paragraph()
-        self._parse_inline_formatting(block, paragraph)
-    
-    def _parse_inline_formatting(self, text: str, paragraph) -> None:
-        # Using regex to find formatting commands like \textbf{...}
+        # These are the things we support right now
         patterns = [
             (r'\\textbf\{([^}]+)\}', 'bold'),
             (r'\\textit\{([^}]+)\}', 'italic'),
             (r'\\underline\{([^}]+)\}', 'underline'),
-            (r'\\href\{([^}]+)\}\{([^}]+)\}', 'hyperlink'),
+            (r'\$([^$]+)\$', 'math'), # Simple inline math between $$
         ]
         
-        pos = 0
-        while pos < len(text):
-            next_match = None
-            next_type = None
+        idx = 0
+        while idx < len(text):
+            found_m = None
+            found_type = None
             
-            # Find the first occurrence among all patterns
-            for pattern, fmt_type in patterns:
-                match = re.search(pattern, text[pos:])
-                if match and (next_match is None or match.start() < next_match.start()):
-                    next_match = match
-                    next_type = fmt_type
+            # Check all patterns to see which one comes next in the string
+            for pat, t in patterns:
+                m = re.search(pat, text[idx:])
+                if m:
+                    if not found_m or m.start() < found_m.start():
+                        found_m = m
+                        found_type = t
             
-            if next_match is None:
-                # Just add everything else as plain text
-                remaining = unescape_latex(text[pos:])
-                if remaining:
-                    paragraph.add_run(remaining)
+            if not found_m:
+                # No more formatting tags, just add the rest and finish
+                rest = unescape_latex(text[idx:])
+                if rest:
+                    para_obj.add_run(rest)
                 break
-            
-            # Add text before the formatting
-            before_text = unescape_latex(text[pos:pos + next_match.start()])
-            if before_text:
-                paragraph.add_run(before_text)
-            
-            # Handle the specific formatting
-            if next_type == 'hyperlink':
-                # Hypelink support in python-docx is complicated, so just adding text for now
-                link_text = unescape_latex(next_match.group(2))
-                paragraph.add_run(link_text)
-            else:
-                formatted_text = unescape_latex(next_match.group(1))
-                run = paragraph.add_run(formatted_text)
                 
-                if next_type == 'bold':
-                    run.bold = True
-                elif next_type == 'italic':
-                    run.italic = True
-                elif next_type == 'underline':
-                    run.underline = True
+            # Add the text BEFORE the formatting tag
+            pre = unescape_latex(text[idx : idx + found_m.start()])
+            if pre:
+                para_obj.add_run(pre)
             
-            # Jump past this match
-            pos += next_match.end()
-    
-    def _process_table(self, block: str) -> None:
-        # Tries to reconstruct a table from tabular environment
-        tabular_match = re.search(r'\\begin\{tabular\}\{[^}]+\}(.*?)\\end\{tabular\}', block, re.DOTALL)
-        if not tabular_match:
-            return
+            # Handle the actual formatted text
+            content = unescape_latex(found_m.group(1))
+            run = para_obj.add_run(content)
+            
+            if found_type == 'bold':
+                run.bold = True
+            elif found_type == 'italic':
+                run.italic = True
+            elif found_type == 'underline':
+                run.underline = True
+            elif found_type == 'math':
+                # For math, we just make it italic for now so it looks different
+                run.italic = True
+                
+            # Move the index past this match
+            idx += found_m.end()
+
+    def _add_table(self, block: str) -> None:
+        # Tries to rebuild a table from tabular
+        tab_m = re.search(r'\\begin\{tabular\}\{[^}]+\}(.*?)\\end\{tabular\}', block, re.DOTALL)
+        if not tab_m:
+             return
+             
+        rows_text = tab_m.group(1).strip()
         
-        table_content = tabular_match.group(1)
+        # Split rows by \\ (the LaTeX row separator)
+        # Note: I'm skipping common lines like \hline or \midrule
+        lines = [r.strip() for r in rows_text.split('\\\\') if r.strip()]
+        lines = [r for r in lines if not r.startswith('\\')]
         
-        # Rows usually end with \\
-        rows = [row.strip() for row in table_content.split('\\\\') if row.strip()]
+        if not lines:
+             return
+             
+        # Guess how many columns based on the first row
+        first_row = lines[0].split('&')
+        num_c = len(first_row)
         
-        # Filter out lines like \midrule \hline etc.
-        rows = [row for row in rows if not row.startswith('\\')]
+        # Add the table to Word
+        t = self.word_doc.add_table(rows=len(lines), cols=num_c)
+        t.style = 'Table Grid'
         
-        if not rows:
-            return
+        for r_idx, r_text in enumerate(lines):
+            cells = [unescape_latex(c.strip()) for c in r_text.split('&')]
+            for c_idx, val in enumerate(cells):
+                if c_idx < num_c:
+                     t.rows[r_idx].cells[c_idx].text = val
+
+    def _add_image(self, block: str) -> None:
+        # Looks for \includegraphics and adds the picture to Word
+        m = re.search(r'\\includegraphics(?:\[[^\]]+\])?\{([^}]+)\}', block)
+        if m:
+            img_path = m.group(1)
+            # We check if the file actually exists
+            if os.path.exists(img_path):
+                 try:
+                      self.word_doc.add_picture(img_path, width=Inches(4))
+                 except:
+                      self.word_doc.add_paragraph(f"[Image found but error loading: {img_path}]")
+            else:
+                 self.word_doc.add_paragraph(f"[Image file not found: {img_path}]")
+
+    def _add_list(self, block: str) -> None:
+        # Reconstructs bullet/numbered lists
+        is_num = '\\begin{enumerate}' in block
+        # Find every \item text
+        items = re.findall(r'\\item\s+(.*?)(?=\\item|\n|\\end)', block, re.DOTALL)
         
-        # Decide how many columns based on first row
-        first_row_cells = [cell.strip() for cell in rows[0].split('&')]
-        num_cols = len(first_row_cells)
-        
-        # Word table setup
-        table = self.doc.add_table(rows=len(rows), cols=num_cols)
-        table.style = 'Light Grid Accent 1'
-        
-        for i, row_text in enumerate(rows):
-            cells = [unescape_latex(cell.strip()) for cell in row_text.split('&')]
-            for j, cell_text in enumerate(cells):
-                if j < num_cols:
-                    table.rows[i].cells[j].text = cell_text
-    
-    def _process_figure(self, block: str) -> None:
-        # Tries to find \includegraphics and add it to Word
-        match = re.search(r'\\includegraphics(?:\[[^\]]+\])?\{([^}]+)\}', block)
-        if not match:
-            return
-        
-        image_path = match.group(1)
-        
-        if os.path.exists(image_path):
-            try:
-                self.doc.add_picture(image_path, width=Inches(4))
-            except Exception as e:
-                logger.warning(f"Could not add image {image_path}: {e}")
-                self.doc.add_paragraph(f"[Image file found but could not be added: {image_path}]")
-        else:
-            # Maybe the path is relative to where the script is or something
-            self.doc.add_paragraph(f"[Image not found at path: {image_path}]")
-    
-    def _process_list(self, block: str) -> None:
-        # Handles bulleted or numbered items
-        is_numbered = '\\begin{enumerate}' in block
-        items = re.findall(r'\\item\s+([^\\\n]+)', block)
-        
-        for item_text in items:
-            item_text = unescape_latex(item_text.strip())
-            style = 'List Number' if is_numbered else 'List Bullet'
-            self.doc.add_paragraph(item_text, style=style)
-    
-    def _process_centered_text(self, block: str) -> None:
-        match = re.search(r'\\begin\{center\}(.*?)\\end\{center\}', block, re.DOTALL)
-        if not match:
-            return
-        
-        content = unescape_latex(match.group(1).strip())
-        paragraph = self.doc.add_paragraph(content)
-        paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+        for it in items:
+            style = 'List Number' if is_num else 'List Bullet'
+            p = self.word_doc.add_paragraph(style=style)
+            self._apply_inline(it.strip(), p)
+
+    def _add_centered(self, block: str) -> None:
+        m = re.search(r'\\begin\{center\}(.*?)\\end\{center\}', block, re.DOTALL)
+        if m:
+             txt = m.group(1).strip()
+             p = self.word_doc.add_paragraph()
+             p.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+             self._apply_inline(txt, p)

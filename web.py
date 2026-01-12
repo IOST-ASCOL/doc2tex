@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# Flask server for the web version
-# Makes it easier for people who don't want to use terminal
+# web.py - A simple Flask interface for doc2tex
+# I built this so my lab mates don't have to use the terminal to convert their reports.
 
 import os
 import tempfile
@@ -8,6 +8,7 @@ from pathlib import Path
 from flask import Flask, render_template, request, send_file, jsonify, url_for
 from werkzeug.utils import secure_filename
 
+# Pull in my core logic
 from doc2tex import (
     DocTeXConverter,
     ConversionOptions,
@@ -18,98 +19,97 @@ from doc2tex import (
 )
 from doc2tex.utils import logger, setup_logger, get_file_info
 
-
-# App setup
+# Initializing the Flask app
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'my-student-secret' # not for production
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 # 16 MB limit
-app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
+app.config['SECRET_KEY'] = 'lab-project-secret-2026' # Just for local use
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 # 16MB should be enough for any Word doc
+app.config['UPLOAD_FOLDER'] = os.path.join(tempfile.gettempdir(), 'doc2tex_web_uploads')
 
+# Make sure the upload folder exists
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-def allowed_file(filename: str) -> bool:
-    # Just checking the extension
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in {'docx', 'tex', 'latex'}
-
+def is_allowed(filename: str) -> bool:
+    # We only take Word and LaTeX files
+    ext = Path(filename).suffix.lower().lstrip('.')
+    return ext in ['docx', 'tex', 'latex']
 
 @app.route('/')
-def index():
-    # Only one page needed
+def home():
+    # The main (and only) page
     return render_template('index.html')
 
-
 @app.route('/convert', methods=['POST'])
-def convert():
-    # AJAX endpoint for conversion
+def handle_convert():
+    # This matches the 'Convert' button click in the browser
     try:
+        # Check if a file was actually uploaded
         if 'file' not in request.files:
-            return jsonify({'error': 'No file uploaded'}), 400
-        
+            return jsonify({'success': False, 'error': 'No file uploaded!'}), 400
+            
         file = request.files['file']
+        if file.filename == '' or not is_allowed(file.filename):
+            return jsonify({'success': False, 'error': 'Invalid file type. Use .docx or .tex'}), 400
+            
+        # Save a local copy of the uploaded file
+        fname = secure_filename(file.filename)
+        in_path = os.path.join(app.config['UPLOAD_FOLDER'], fname)
+        file.save(in_path)
         
-        if file.filename == '' or not allowed_file(file.filename):
-            return jsonify({'error': 'Invalid file'}), 400
-        
-        # Security check on filename
-        filename = secure_filename(file.filename)
-        input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(input_path)
-        
-        # Grab settings from form
-        options = ConversionOptions(
+        # Grab the settings from the form (matching values in options.py)
+        user_settings = ConversionOptions(
             document_type=DocumentType(request.form.get('doc_type', 'article')),
             font_size=FontSize(request.form.get('font_size', '12pt')),
             line_spacing=LineSpacing(request.form.get('line_spacing', 'single')),
             extract_bibliography=request.form.get('extract_bib') == 'true',
-            preserve_images=request.form.get('preserve_images', 'true') == 'true',
-            optimize_images=request.form.get('optimize_images') == 'true',
             unicode_support=request.form.get('unicode_support', 'true') == 'true'
         )
         
-        converter = DocTeXConverter(options)
+        # Create our converter instance
+        c = DocTeXConverter(user_settings)
         
-        # Decide output filename
-        input_ext = Path(filename).suffix.lower()
-        output_ext = '.tex' if input_ext == '.docx' else '.docx'
-        output_filename = Path(filename).stem + output_ext
-        output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
+        # Determine output name automatically
+        in_ext = Path(fname).suffix.lower()
+        out_ext = '.tex' if in_ext == '.docx' else '.docx'
+        out_name = Path(fname).stem + out_ext
+        out_path = os.path.join(app.config['UPLOAD_FOLDER'], out_name)
         
-        # Convert it!
-        result = converter.convert(input_path, output_path)
-        output_info = get_file_info(result)
+        # Run the conversion
+        logger.info(f"Web conversion started: {fname}")
+        res_path = c.convert(in_path, out_path)
+        stats = get_file_info(res_path)
         
+        # Tell the browser where to download the result
         return jsonify({
             'success': True,
-            'message': 'Saved!',
-            'output_filename': output_filename,
-            'output_size': output_info['size_formatted'],
-            'download_url': url_for('download', filename=output_filename)
+            'output_filename': out_name,
+            'output_size': stats['size_formatted'],
+            'download_url': url_for('get_result', name=out_name)
         })
-    
+        
     except Exception as e:
-        logger.error(f"Web error: {e}")
-        return jsonify({'error': str(e)}), 500
-    finally:
-        # We don't delete immediately because user needs to download it
-        # but in a real web app you'd clean this up
-        pass
+        logger.error(f"Web UI Error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/download/<name>')
+def get_result(name):
+    # Sends the file back to the browser
+    # Using secure_filename again just to be safe
+    safe_name = secure_filename(name)
+    target = os.path.join(app.config['UPLOAD_FOLDER'], safe_name)
+    
+    if os.path.exists(target):
+         return send_file(target, as_attachment=True)
+    else:
+         return "Error: File disappeared! Try converting it again.", 404
 
-@app.route('/download/<filename>')
-def download(filename):
-    # Download the result
-    try:
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
-        return send_file(filepath, as_attachment=True)
-    except:
-        return jsonify({'error': 'File not found'}), 404
-
-
-def main():
+def start_server():
+    # Entry point if you run 'python web.py' directly
     setup_logger(verbose=True)
-    print("Starting server at http://localhost:5000")
+    print("-------------------------------------------------")
+    print("doc2tex server is warming up...")
+    print("Open this link: http://localhost:5000")
+    print("-------------------------------------------------")
     app.run(host='0.0.0.0', port=5000, debug=True)
 
-
 if __name__ == '__main__':
-    main()
+    start_server()

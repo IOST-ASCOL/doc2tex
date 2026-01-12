@@ -1,9 +1,9 @@
-# The main class that ties everything together
-# It detects if you're going DOCX -> LaTeX or LaTeX -> DOCX
+# doc2tex - The main script that glues it all together
+# You can use the CLI or the Web UI, but they both use this class eventually.
 
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from .options import ConversionOptions
 from .latex import LatexGenerator
@@ -13,148 +13,126 @@ from .errors import ConversionError, InvalidFileFormatError
 
 
 class DocTeXConverter:
-    # This class manages the whole conversion process
-    # Just create an instance and call .convert()
+    """
+    This is my main converter class.
+    Basically, you give it a file, and it figures out if you want to go to LaTeX 
+    or to Word based on the extension.
+    """
     
-    SUPPORTED_INPUT_FORMATS = ['docx', 'tex', 'latex']
-    SUPPORTED_OUTPUT_FORMATS = ['docx', 'tex']
+    # I kept these here just to remember what we support
+    ALLOWED_IN = ['docx', 'tex', 'latex']
+    ALLOWED_OUT = ['docx', 'tex']
     
-    def __init__(self, options: Optional[ConversionOptions] = None):
-        # Initialize with default options if none provided
-        self.options = options or ConversionOptions()
+    def __init__(self, settings: Optional[ConversionOptions] = None):
+        # If the user didn't pass any settings, we just use defaults
+        self.settings = settings or ConversionOptions()
         
-        # Validates that we didn't put weird values in options
-        self.options.validate()
+        # Make sure settings are okay before we start
+        self.settings.validate()
         
-        if self.options.verbose:
+        if self.settings.verbose:
             logger.setLevel('DEBUG')
+            logger.debug("Okay, verbose mode is ON. Let's see what happens.")
     
     def convert(
         self, 
-        input_path: str, 
-        output_path: Optional[str] = None,
-        direction: Optional[str] = None
+        input_file: str, 
+        output_file: Optional[str] = None,
+        forced_direction: Optional[str] = None
     ) -> str:
-        # Main function to convert a file
-        if not os.path.exists(input_path):
-            raise ConversionError(f"Input file doesn't exist: {input_path}")
+        # This is the function that does everything
+        if not os.path.isfile(input_file):
+            raise ConversionError(f"I can't find the file: {input_file}")
         
-        # Log basic file info so we know what's happening
-        file_info = get_file_info(input_path)
-        logger.info(f"Processing: {file_info['name']}")
+        # Just printing some info for the logs
+        info = get_file_info(input_file)
+        logger.info(f"Working on: {info['name']}")
         
-        # Figure out if we are going to latex or to docx
-        if direction is None:
-            direction = self._detect_direction(input_path)
+        # 1. Figure out direction (docx2latex or latex2docx)
+        if forced_direction:
+            direction = forced_direction
+        else:
+            direction = self._guess_direction(input_file)
+            
+        # 2. Pick a name for the output if we don't have one
+        if output_file is None:
+            output_file = self._calc_output_path(input_file, direction)
         
-        # Create output path if user didn't specify one
-        if output_path is None:
-            output_path = self._generate_output_path(input_path, direction)
-        
-        output_dir = os.path.dirname(output_path)
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
-        
-        # Run the actual conversion based on direction
+        # Make the folder if it's missing (I forgot this once and it crashed)
+        out_dir = os.path.dirname(output_file)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+            
+        # 3. Call the generator
         try:
             if direction == 'to_latex':
-                result = self._convert_to_latex(input_path, output_path)
+                return self._run_latex_gen(input_file, output_file)
             elif direction == 'to_docx':
-                result = self._convert_to_docx(input_path, output_path)
+                return self._run_docx_gen(input_file, output_file)
             else:
-                raise ConversionError(f"Invalid direction: {direction}")
-            
-            return result
-            
+                raise ConversionError(f"Weird direction: {direction}. How did that happen?")
+                
         except Exception as e:
-            logger.error(f"Failed to convert: {e}")
+            logger.error(f"Failed to convert {input_file}: {e}")
             raise
     
-    # Shortcut for docx -> latex
-    def convert_to_latex(self, input_path: str, output_path: Optional[str] = None) -> str:
-        return self.convert(input_path, output_path, direction='to_latex')
-    
-    # Shortcut for latex -> docx
-    def convert_to_docx(self, input_path: str, output_path: Optional[str] = None) -> str:
-        return self.convert(input_path, output_path, direction='to_docx')
-    
-    def _detect_direction(self, input_path: str) -> str:
-        # Checks the extension to guess what user wants
-        ext = Path(input_path).suffix.lower().lstrip('.')
-        
+    def _guess_direction(self, path: str) -> str:
+        # Checkextension and guess
+        ext = Path(path).suffix.lower().lstrip('.')
         if ext == 'docx':
             return 'to_latex'
         elif ext in ['tex', 'latex']:
             return 'to_docx'
         else:
-            raise InvalidFileFormatError(f"I don't know how to handle .{ext} files. Use DOCX or TEX.")
-    
-    def _generate_output_path(self, input_path: str, direction: str) -> str:
-        # Rename input.docx to input.tex or vice versa
-        input_path_obj = Path(input_path)
-        stem = input_path_obj.stem
+            raise InvalidFileFormatError(f"I don't know what to do with .{ext} files. Sorry!")
+            
+    def _calc_output_path(self, path: str, dir: str) -> str:
+        # Swaps .docx for .tex or vice versa
+        p = Path(path)
+        new_ext = '.tex' if dir == 'to_latex' else '.docx'
+        return str(p.with_suffix(new_ext))
         
-        if direction == 'to_latex':
-            return str(input_path_obj.parent / f"{stem}.tex")
-        else:
-            return str(input_path_obj.parent / f"{stem}.docx")
-    
-    def _convert_to_latex(self, input_path: str, output_path: str) -> str:
-        # Calls the LatexGenerator
-        if not is_valid_file(input_path, ['docx']):
-            raise InvalidFileFormatError("Need a .docx file for this")
+    def _run_latex_gen(self, inp: str, out: str) -> str:
+        # DOCX -> LaTeX
+        # Need to make sure it's actually a docx file first
+        if not is_valid_file(inp, ['docx']):
+            raise InvalidFileFormatError("I need a .docx file to make LaTeX.")
+            
+        gen = LatexGenerator(self.settings)
+        res = gen.convert(inp, out)
         
-        generator = LatexGenerator(self.options)
-        result = generator.convert(input_path, output_path)
+        # Clean up temp images if needed
+        if self.settings.clean_temp_files and gen.temp_workspace:
+            cleanup_temp_dir(gen.temp_workspace)
+            
+        return res
         
-        if self.options.clean_temp_files and generator.temp_dir:
-            cleanup_temp_dir(generator.temp_dir)
-        
-        return result
-    
-    def _convert_to_docx(self, input_path: str, output_path: str) -> str:
-        # Calls the DocxGenerator
-        if not is_valid_file(input_path, ['tex', 'latex']):
-            raise InvalidFileFormatError("Need a .tex or .latex file for this")
-        
-        generator = DocxGenerator(self.options)
-        result = generator.convert(input_path, output_path)
-        
-        return result
-    
-    def batch_convert(
-        self, 
-        input_files: list, 
-        output_dir: Optional[str] = None,
-        direction: Optional[str] = None
-    ) -> list:
-        # For converting multiple files at once
+    def _run_docx_gen(self, inp: str, out: str) -> str:
+        # LaTeX -> DOCX
+        if not is_valid_file(inp, ['tex', 'latex']):
+            raise InvalidFileFormatError("I need a .tex file to make a Word doc.")
+            
+        gen = DocxGenerator(self.settings)
+        return gen.convert(inp, out)
+
+    def batch(self, files: list, out_dir: Optional[str] = None) -> list:
+        # This is useful if you have a whole folder of reports to convert
         results = []
-        
-        for input_file in input_files:
+        for f in files:
             try:
-                # If they gave an output dir, put the result there
-                if output_dir:
-                    filename = Path(input_file).name
-                    detected_direction = direction or self._detect_direction(input_file)
-                    ext = '.tex' if detected_direction == 'to_latex' else '.docx'
-                    output_path = os.path.join(output_dir, Path(filename).stem + ext)
+                # If they gave us a target folder, put it there
+                if out_dir:
+                    os.makedirs(out_dir, exist_ok=True)
+                    name = Path(f).stem
+                    # We have to guess the direction again for the extension
+                    d = self._guess_direction(f)
+                    ext = '.tex' if d == 'to_latex' else '.docx'
+                    target = os.path.join(out_dir, name + ext)
                 else:
-                    output_path = None
-                
-                result = self.convert(input_file, output_path, direction)
-                results.append(result)
-                
+                    target = None
+                    
+                results.append(self.convert(f, target))
             except Exception as e:
-                logger.error(f"Skipping {input_file} because of error: {e}")
+                logger.warning(f"Skipping {f} because: {e}")
                 results.append(None)
-        
         return results
-    
-    def get_conversion_info(self) -> dict:
-        # Just returns some info about the current setup
-        return {
-            'inputs': self.SUPPORTED_INPUT_FORMATS,
-            'outputs': self.SUPPORTED_OUTPUT_FORMATS,
-            'options_used': self.options.to_dict(),
-        }

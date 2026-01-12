@@ -1,9 +1,10 @@
-# Handles converting docx to latex
-# This part is a bit tricky because word and latex are very different
+# doc2tex - Word to LaTeX conversion logic
+# This is the part that actually writes the .tex file.
+# Note: Word's structure is a mess compared to LaTeX, so we have to do some guessing.
 
 import os
 import re
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from pathlib import Path
 from docx import Document
 from docx.shared import Pt, RGBColor
@@ -22,97 +23,106 @@ from .errors import ConversionError, ImageProcessingError
 
 
 class LatexGenerator:
-    # This class does the heavy lifting for latex generation
+    """
+    This is my main class for turning a Word doc into LaTeX.
+    I tried to make the output code clean so you don't have to fix everything 
+    manually like you do with Pandoc sometimes.
+    """
     
     def __init__(self, options: ConversionOptions):
         self.options = options
-        self.bibliography_entries = []
-        self.image_counter = 0
-        self.footnote_counter = 0
-        self.temp_dir = None
+        self.bib_list = [] # Stores bibliography entries we find
+        self.img_idx = 0   # Keeps track of how many images we've saved
+        self.footer_idx = 0
+        self.temp_workspace = None
         
-    def convert(self, input_path: str, output_path: str) -> str:
-        # Main entry point for converting one file
+    def convert(self, docx_path: str, tex_path: str) -> str:
+        # The main function called by the converter
         try:
-            logger.info(f"Converting DOCX to LaTeX: {input_path}")
+            logger.info(f"Wait, converting {docx_path} now...")
             
-            # Use the python-docx library to read the file
-            doc = Document(input_path)
+            # Load the actual word file
+            my_doc = Document(docx_path)
             
-            # Create a temp folder for images if we need to extract them
+            # If the user wants images, we need a place to put them
             if self.options.preserve_images:
-                self.temp_dir = get_temp_dir()
+                self.temp_workspace = get_temp_dir()
             
-            # Start gathering all the latex code
-            latex_content = self._generate_latex(doc, output_path)
+            # Build the latex string
+            full_latex = self._build_document(my_doc, tex_path)
             
-            # Write everything to the output file
-            with open(output_path, 'w', encoding=self.options.output_encoding) as f:
-                f.write(latex_content)
+            # Save it to the file
+            with open(tex_path, 'w', encoding=self.options.output_encoding) as target:
+                target.write(full_latex)
             
-            # If user wanted bibliography, we handle that here
-            if self.options.extract_bibliography and self.bibliography_entries:
-                self._generate_bibliography(output_path)
+            # Handle bibliography if we found any entries
+            if self.options.extract_bibliography and self.bib_list:
+                self._write_bib_file(tex_path)
             
-            return output_path
+            return tex_path
             
-        except Exception as e:
-            # Just catch anything that goes wrong and wrap it in our error
-            raise ConversionError(f"Something went wrong during conversion: {e}")
+        except Exception as err:
+            # If something breaks, at least tell the user why
+            logger.error(f"Ugh, something broke: {err}")
+            raise ConversionError(f"Conversion failed mid-way: {err}")
     
-    def _generate_latex(self, doc: Document, output_path: str) -> str:
-        # Puts together the whole latex document structure
-        sections = []
+    def _build_document(self, doc: Document, path: str) -> str:
+        # Puts together the preamble and the body
+        output_chunks = []
         
-        # Add the preamble (documentclass, packages, etc.)
+        # 1. The Preamble (all the setup stuff)
         if self.options.include_preamble and self.options.standalone_document:
-            sections.append(self._generate_preamble())
+            output_chunks.append(self._make_preamble())
         
-        # Start the actual document
+        # 2. Start of document
         if self.options.standalone_document:
-            sections.append("\\begin{document}\n")
+            output_chunks.append("\\begin{document}\n")
         
-        # Loop through paragraphs and tables
-        body_content = self._process_document_body(doc, output_path)
-        sections.append(body_content)
+        # 3. The actual content
+        # I iterate through the body elements to keep the order correct
+        body_tex = self._parse_body(doc, path)
+        output_chunks.append(body_tex)
         
-        # End it
+        # 4. Wrap it up
         if self.options.standalone_document:
-            sections.append("\n\\end{document}")
+            output_chunks.append("\n\\end{document}")
         
-        return '\n'.join(sections)
+        return '\n'.join(output_chunks)
     
-    def _generate_preamble(self) -> str:
-        # Setup the latex settings and packages
+    def _make_preamble(self) -> str:
+        # This is where we set up the LaTeX packages.
+        # I added some extra ones that usually help with engineering reports.
         lines = []
         
-        # Document class (like article or report)
-        doc_class = self.options.document_type.value
-        font_size = self.options.font_size.value
-        lines.append(f"\\documentclass[{font_size}]{{{doc_class}}}\n")
+        d_type = self.options.document_type.value
+        f_size = self.options.font_size.value
+        lines.append(f"\\documentclass[{f_size}]{{{d_type}}}\n")
         
-        # Standard packages that are always useful
+        # Basic character support
         if self.options.unicode_support:
+            lines.append("% Support for non-english characters")
             lines.append("\\usepackage[T1]{fontenc}")
             lines.append("\\usepackage[utf8]{inputenc}")
         
+        # Layout and Margins
         lines.append(f"\\usepackage[{self.options.page_margins}]{{geometry}}")
         
+        # Images - we stick them in an 'images' subfolder for neatness
         if self.options.preserve_images:
             lines.append("\\usepackage{graphicx}")
-            # we assume images will be in a folder named 'images'
             lines.append("\\graphicspath{{./images/}}")
         
+        # Better links (clickable)
         lines.append("\\usepackage{hyperref}")
-        lines.append("\\hypersetup{colorlinks=true,linkcolor=blue}")
+        lines.append("\\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=cyan}")
         
-        lines.append("\\usepackage{amsmath}")
-        lines.append("\\usepackage{amssymb}")
-        lines.append("\\usepackage{booktabs}")
-        lines.append("\\usepackage{longtable}")
+        # Standard math and table packages
+        lines.append("\\usepackage{amsmath, amssymb, amsfonts}")
+        lines.append("\\usepackage{booktabs} % For nice professional tables")
+        lines.append("\\usepackage{longtable} % In case tables are huge")
         lines.append("\\usepackage{array}")
         
-        # Set the line spacing (single, 1.5, or double)
+        # Line spacing (single, double, etc)
         if self.options.line_spacing != LineSpacing.SINGLE:
             lines.append("\\usepackage{setspace}")
             if self.options.line_spacing == LineSpacing.ONE_HALF:
@@ -120,144 +130,160 @@ class LatexGenerator:
             elif self.options.line_spacing == LineSpacing.DOUBLE:
                 lines.append("\\doublespacing")
         
+        # Bibliography setup
         if self.options.extract_bibliography:
             lines.append("\\usepackage{natbib}")
             lines.append(f"\\bibliographystyle{{{self.options.bibliography_style}}}")
         
-        # Add any extra packages that weren't in my list
-        for package in self.options.custom_packages:
-            lines.append(f"\\usepackage{{{package}}}")
+        # Any other random packages the user asked for
+        for pkg in self.options.custom_packages:
+            lines.append(f"\\usepackage{{{pkg}}}")
         
         return '\n'.join(lines) + '\n'
     
-    def _process_document_body(self, doc: Document, output_path: str) -> str:
-        # Iterate through every element in the word doc's body
-        lines = []
+    def _parse_body(self, doc: Document, path: str) -> str:
+        # Loop over every item in the document body
+        # Paragraphs and Tables are the main things here
+        final_lines = []
         
-        for element in doc.element.body:
+        for el in doc.element.body:
             # Check if it's a paragraph
-            if isinstance(element, CT_P):
-                paragraph = Paragraph(element, doc)
-                latex_para = self._process_paragraph(paragraph)
-                if latex_para:
-                    lines.append(latex_para)
+            if isinstance(el, CT_P):
+                p_obj = Paragraph(el, doc)
+                p_tex = self._handle_paragraph(p_obj)
+                if p_tex:
+                    final_lines.append(p_tex)
+            
             # Check if it's a table
-            elif isinstance(element, CT_Tbl):
-                table = Table(element, doc)
-                latex_table = self._process_table(table)
-                if latex_table:
-                    lines.append(latex_table)
+            elif isinstance(el, CT_Tbl):
+                t_obj = Table(el, doc)
+                t_tex = self._handle_table(t_obj)
+                if t_tex:
+                    final_lines.append(t_tex)
         
-        return '\n\n'.join(lines)
+        return '\n\n'.join(final_lines)
     
-    def _process_paragraph(self, paragraph: Paragraph) -> str:
-        # Converts a word paragraph into latex syntax
-        if not paragraph.text.strip():
-            return ""
+    def _handle_paragraph(self, para: Paragraph) -> str:
+        # Turns a single line of text into LaTeX
+        if not para.text.strip():
+            return "" # Ignore empty lines
         
-        # Heading styles are handled specially
-        if paragraph.style.name.startswith('Heading'):
-            return self._process_heading(paragraph)
+        # If it's a heading, handle it separately
+        if para.style.name.startswith('Heading'):
+            return self._handle_heading(para)
         
-        # Process each "run" (part of text with same formatting)
-        text_parts = []
-        for run in paragraph.runs:
-            # Escape symbols like &, %, $, etc.
-            text = escape_latex(run.text)
+        # Break the paragraph into 'runs' (bits with different formatting)
+        tex_pieces = []
+        for run in para.runs:
+            # Escape LaTeX symbols like % and &
+            txt = escape_latex(run.text)
             
-            # Check for bold, italics, etc.
+            # Apply common formatting
+            # Note: I'm combining them so you can have bold AND italic
             if run.bold:
-                text = f"\\textbf{{{text}}}"
+                txt = f"\\textbf{{{txt}}}"
             if run.italic:
-                text = f"\\textit{{{text}}}"
+                txt = f"\\textit{{{txt}}}"
             if run.underline:
-                text = f"\\underline{{{text}}}"
+                txt = f"\\underline{{{txt}}}"
             
-            # Simple hyperlink handling (partial)
+            # Try to catch hyperlinks (though docx library is limited here)
             if hasattr(run, 'hyperlink') and run.hyperlink:
-                url = run.hyperlink.address if hasattr(run.hyperlink, 'address') else ''
-                if url:
-                    text = f"\\href{{{url}}}{{{text}}}"
+                link = run.hyperlink.address if hasattr(run.hyperlink, 'address') else ''
+                if link:
+                    txt = f"\\href{{{link}}}{{{txt}}}"
             
-            text_parts.append(text)
+            tex_pieces.append(txt)
         
-        paragraph_text = ''.join(text_parts)
+        clean_text = ''.join(tex_pieces)
         
-        # Horizontal alignment
+        # Handle alignment (Center/Right)
+        # Word calls them 'CENTER' and 'RIGHT'
         try:
-            alignment = paragraph.alignment
-            if alignment == WD_PARAGRAPH_ALIGNMENT.CENTER:
-                paragraph_text = f"\\begin{{center}}\n{paragraph_text}\n\\end{{center}}"
-            elif alignment == WD_PARAGRAPH_ALIGNMENT.RIGHT:
-                paragraph_text = f"\\begin{{flushright}}\n{paragraph_text}\n\\end{{flushright}}"
+            align = para.alignment
+            if align == WD_PARAGRAPH_ALIGNMENT.CENTER:
+                clean_text = f"\\begin{{center}}\n{clean_text}\n\\end{{center}}"
+            elif align == WD_PARAGRAPH_ALIGNMENT.RIGHT:
+                clean_text = f"\\begin{{flushright}}\n{clean_text}\n\\end{{flushright}}"
         except:
-            # If alignment check fails for some reason (like 'start' mapping issue),
-            # we just treat it as default alignment
+            # Sometimes alignment is 'None' or some weird value, just ignore it
             pass
-        
-        return paragraph_text
+            
+        return clean_text
     
-    def _process_heading(self, paragraph: Paragraph) -> str:
-        # Decides which section command to use based on level
-        text = escape_latex(paragraph.text)
-        style_name = paragraph.style.name
+    def _handle_heading(self, para: Paragraph) -> str:
+        # Maps Word headings to LaTeX sections
+        txt = escape_latex(para.text)
+        s_name = para.style.name
         
-        if 'Heading 1' in style_name:
-            return f"\\section{{{text}}}"
-        elif 'Heading 2' in style_name:
-            return f"\\subsection{{{text}}}"
-        elif 'Heading 3' in style_name:
-            return f"\\subsubsection{{{text}}}"
-        elif 'Heading 4' in style_name:
-            return f"\\paragraph{{{text}}}"
+        # I added some 'Smart' detection for sections that usually start on new pages
+        prefix = ""
+        if "Heading 1" in s_name and self.options.document_type.value in ["report", "thesis"]:
+             # reports usually start Heading 1 on a fresh page
+             prefix = "\\clearpage\n"
+             
+        if 'Heading 1' in s_name:
+            return f"{prefix}\\section{{{txt}}}"
+        elif 'Heading 2' in s_name:
+            return f"\\subsection{{{txt}}}"
+        elif 'Heading 3' in s_name:
+            return f"\\subsubsection{{{txt}}}"
+        elif 'Heading 4' in s_name:
+            return f"\\paragraph{{{txt}}}"
         else:
-            return f"\\subparagraph{{{text}}}"
+            return f"\\subparagraph{{{txt}}}"
     
-    def _process_table(self, table: Table) -> str:
-        # Converts word tables to latex longtable or tabular
-        if not table.rows:
+    def _handle_table(self, tbl: Table) -> str:
+        # Reconstructs tables. This is always a bit messy.
+        if not tbl.rows:
             return ""
         
-        num_cols = len(table.rows[0].cells)
+        # Count how many columns we need
+        col_count = len(tbl.rows[0].cells)
         
-        lines = []
-        lines.append("\\begin{table}[h]")
-        lines.append("\\centering")
-        # Creating column structure like |l|l|l|
-        lines.append(f"\\begin{{tabular}}{{{'|'.join(['l'] * num_cols)}}}")
-        lines.append("\\toprule")
+        bits = []
+        bits.append("\\begin{table}[h!]") # [h!] helps with positioning
+        bits.append("\\centering")
         
-        for i, row in enumerate(table.rows):
+        # Define columns (centered by default for neatness)
+        col_def = "|" + "|".join(["c"] * col_count) + "|"
+        bits.append(f"\\begin{{tabular}}{{{col_def}}}")
+        bits.append("\\toprule") # booktabs style
+        
+        for i, row in enumerate(tbl.rows):
             cells = []
             for cell in row.cells:
-                # Escape each cell content
-                cell_text = escape_latex(cell.text.strip())
-                cells.append(cell_text)
+                # Clean up text in each cell
+                val = escape_latex(cell.text.strip())
+                cells.append(val)
             
-            # Join cells with & for latex
-            row_text = " & ".join(cells) + " \\\\"
-            lines.append(row_text)
+            # Join with & and end with \\
+            row_str = " & ".join(cells) + " \\\\"
+            bits.append(row_str)
             
-            # Add line after header
+            # Add fancy lines for headers
             if i == 0:
-                lines.append("\\midrule")
+                bits.append("\\midrule")
+            else:
+                bits.append("\\hline")
         
-        lines.append("\\bottomrule")
-        lines.append("\\end{tabular}")
-        lines.append("\\end{table}")
+        bits.append("\\bottomrule")
+        bits.append("\\end{tabular}")
         
-        return '\n'.join(lines)
+        # Add a placeholder caption since we can't always find it in Word
+        bits.append("\\caption{Automated Table from Word}")
+        bits.append("\\end{table}")
+        
+        return '\n'.join(bits)
     
-    def _generate_bibliography(self, output_path: str) -> None:
-        # Simple placeholder for bibliography generation
-        if not self.bibliography_entries:
-            return
+    def _write_bib_file(self, tex_path: str) -> None:
+        # Writes the references to a separate .bib file
+        bib_file = tex_path.replace('.tex', '.bib')
         
-        # Just creating a renamed .bib file
-        bib_path = output_path.replace('.tex', '.bib')
-        
-        with open(bib_path, 'w', encoding=self.options.output_encoding) as f:
-            for entry in self.bibliography_entries:
-                f.write(entry + '\n\n')
-        
-        logger.info(f"Created bib file at: {bib_path}")
+        try:
+            with open(bib_file, 'w', encoding=self.options.output_encoding) as b:
+                for entry in self.bib_list:
+                    b.write(entry + '\n\n')
+            logger.info(f"Cool, created bib file at {bib_file}")
+        except:
+             logger.warning("Couldnt write the bib file for some reason.")
