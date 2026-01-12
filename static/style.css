@@ -1,0 +1,276 @@
+/* Main CSS for doc2tex */
+/* Trying to make it look clean and modern */
+
+:root {
+    --primary: #4a6ee0;
+    --primary-light: #667eea;
+    --dark: #0f172a;
+    --light: #f8fafc;
+    --border: #e2e8f0;
+    --text: #334155;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f1f5f9;
+    color: var(--text);
+    line-height: 1.5;
+}
+
+.container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* Background effects */
+.bg-gradient {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle at 0% 0%, rgba(74, 110, 224, 0.05) 0%, transparent 50%),
+        radial-gradient(circle at 100% 100%, rgba(102, 126, 234, 0.05) 0%, transparent 50%);
+    z-index: -1;
+}
+
+/* Header styling */
+.header {
+    background: white;
+    padding: 15px 0;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.header .container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.logo h1 {
+    font-size: 1.5rem;
+    color: var(--primary);
+}
+
+.nav a {
+    text-decoration: none;
+    color: var(--text);
+    margin-left: 20px;
+    font-weight: 500;
+}
+
+/* Hero section */
+.hero {
+    padding: 60px 0;
+    text-align: center;
+}
+
+.hero-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+
+.gradient-text {
+    background: linear-gradient(to right, var(--primary), var(--primary-light));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.hero-subtitle {
+    font-size: 1.1rem;
+    color: #64748b;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+/* Feature boxes */
+.features {
+    padding-bottom: 60px;
+}
+
+.features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+.feature-card {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+}
+
+.feature-card h3 {
+    margin-bottom: 10px;
+    color: var(--dark);
+}
+
+/* Main converter card */
+.converter-card {
+    background: white;
+    padding: 30px;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    max-width: 600px;
+    margin: 0 auto;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.converter-title {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+/* File upload zone */
+.upload-area {
+    border: 2px dashed var(--border);
+    padding: 40px;
+    text-align: center;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.upload-area:hover {
+    background: #f8fafc;
+    border-color: var(--primary);
+}
+
+.upload-icon {
+    margin-bottom: 10px;
+    color: var(--primary);
+}
+
+/* Options area */
+.options {
+    margin-top: 20px;
+}
+
+.options-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.option-group label {
+    display: block;
+    font-size: 0.9rem;
+    margin-bottom: 5px;
+}
+
+.select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.checkboxes {
+    display: flex;
+    gap: 20px;
+}
+
+.checkbox {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.9rem;
+}
+
+/* Buttons */
+.btn-convert {
+    width: 100%;
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-top: 20px;
+    cursor: pointer;
+}
+
+.btn-convert:hover {
+    background: var(--primary-light);
+}
+
+.btn-download {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-right: 10px;
+}
+
+.btn-secondary {
+    background: #f1f5f9;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.btn-remove {
+    background: #fee2e2;
+    color: #ef4444;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* Feedback states */
+.progress {
+    margin-top: 20px;
+    background: #e2e8f0;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    background: var(--primary);
+    height: 100%;
+    width: 0;
+}
+
+.result,
+.error {
+    margin-top: 20px;
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.result {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+}
+
+.error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+}
+
+.footer {
+    text-align: center;
+    padding: 40px 0;
+    color: #94a3b8;
+    font-size: 0.9rem;
+}
