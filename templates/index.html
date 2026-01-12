@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>doc2tex - Simple Document Converter</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="bg-gradient"></div>
+
+    <header class="header">
+        <div class="container">
+            <div class="logo">
+                <h1>doc2tex</h1>
+            </div>
+            <nav class="nav">
+                <a href="#features">Features</a>
+                <a href="#converter">Convert</a>
+            </nav>
+        </div>
+    </header>
+
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <h2 class="hero-title">
+                    Convert Word to LaTeX
+                    <span class="gradient-text">Quickly</span>
+                </h2>
+                <p class="hero-subtitle">
+                    A simple tool for undergrad students to convert their documents between DOCX and LaTeX formats
+                    locally.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <section id="features" class="features">
+        <div class="container">
+            <h2 class="section-title">Features</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <h3>DOCX to LaTeX</h3>
+                    <p>Handles headings, bold, italics, and lists automatically.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>LaTeX to DOCX</h3>
+                    <p>Extracts text and formatting from .tex files back into Word.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Table Support</h3>
+                    <p>Basic conversion for simple tabular data in both directions.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Local Processing</h3>
+                    <p>No data is sent to external servers. Runs entirely on your machine.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="converter" class="converter">
+        <div class="container">
+            <div class="converter-card">
+                <h2 class="converter-title">Convert Now</h2>
+
+                <div class="upload-area" id="uploadArea">
+                    <input type="file" id="fileInput" accept=".docx,.tex,.latex" hidden>
+                    <div class="upload-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5-5 5 5M12 15V5" />
+                        </svg>
+                    </div>
+                    <h3 class="upload-title">Select your file</h3>
+                    <p class="upload-text">DOCX, TEX, or LATEX files</p>
+                </div>
+
+                <div class="file-info" id="fileInfo" style="display: none;">
+                    <div class="file-details">
+                        <div class="file-meta">
+                            <div class="file-name" id="fileName"></div>
+                            <div class="file-size" id="fileSize"></div>
+                        </div>
+                        <button class="btn-remove" id="removeFile">Remove</button>
+                    </div>
+                </div>
+
+                <div class="options" id="options" style="display: none;">
+                    <h3 class="options-title">Settings</h3>
+                    <div class="options-grid">
+                        <div class="option-group">
+                            <label>Document Type</label>
+                            <select id="docType" class="select">
+                                <option value="article">Article</option>
+                                <option value="report">Report</option>
+                                <option value="thesis">Thesis</option>
+                            </select>
+                        </div>
+                        <div class="option-group">
+                            <label>Font Size</label>
+                            <select id="fontSize" class="select">
+                                <option value="10pt">10pt</option>
+                                <option value="11pt">11pt</option>
+                                <option value="12pt" selected>12pt</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="checkboxes">
+                        <label class="checkbox">
+                            <input type="checkbox" id="extractBib">
+                            <span>Extract Bibliography</span>
+                        </label>
+                        <label class="checkbox">
+                            <input type="checkbox" id="unicodeSupport" checked>
+                            <span>Unicode Support</span>
+                        </label>
+                    </div>
+                </div>
+
+                <button class="btn-convert" id="convertBtn" style="display: none;">
+                    <span id="btnText">Convert</span>
+                    <div class="spinner" id="spinner" style="display: none;"></div>
+                </button>
+
+                <div class="progress" id="progress" style="display: none;">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+
+                <div class="result" id="result" style="display: none;">
+                    <h3 class="result-title">Success!</h3>
+                    <p class="result-text" id="resultText"></p>
+                    <button class="btn-download" id="downloadBtn">Download</button>
+                    <button class="btn-secondary" id="convertAnother">New Convert</button>
+                </div>
+
+                <div class="error" id="error" style="display: none;">
+                    <h3 class="error-title">Error</h3>
+                    <p class="error-text" id="errorText"></p>
+                    <button class="btn-secondary" id="tryAgain">Try Again</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container">
+            <p>doc2tex - Undergrad Engineering Project</p>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+
+</html>
