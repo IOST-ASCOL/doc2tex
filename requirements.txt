@@ -1,21 +1,8 @@
-# DocTeX Ultimate Converter - Dependencies
+# doc2tex dependencies (also declared in pyproject.toml)
+python-docx>=1.1
+Pillow>=10.0
+Flask>=3.0
 
-# Core conversion libraries
-python-docx>=0.8.11
-Pillow>=10.0.0
-
-# Web framework
-Flask>=2.3.0
-Werkzeug>=2.3.0
-
-# CLI utilities
-argparse
-
-# Standard library (included with Python)
-# - pathlib
-# - tempfile
-# - logging
-# - hashlib
-# - re
-# - os
-# - shutil
+# For running the tests
+pytest>=8
+pytest-cov>=5

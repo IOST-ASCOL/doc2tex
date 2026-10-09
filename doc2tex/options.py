@@ -64,6 +64,9 @@ class ConversionOptions:
     clean_temp_files: bool = True
     verbose: bool = False
     
+    # LaTeX -> Word: write section/figure/equation numbers like LaTeX does
+    number_sections: bool = True
+
     # Whether to include full LaTeX document or just content
     include_preamble: bool = True
     standalone_document: bool = True
@@ -89,6 +92,7 @@ class ConversionOptions:
             'output_encoding': self.output_encoding,
             'clean_temp_files': self.clean_temp_files,
             'verbose': self.verbose,
+            'number_sections': self.number_sections,
             'include_preamble': self.include_preamble,
             'standalone_document': self.standalone_document,
         }
@@ -97,6 +101,7 @@ class ConversionOptions:
     @classmethod
     def from_dict(cls, data: dict):
         # Need to convert string values back to enums
+        data = dict(data)  # don't modify the caller's dict
         if 'document_type' in data and isinstance(data['document_type'], str):
             data['document_type'] = DocumentType(data['document_type'])
         if 'font_size' in data and isinstance(data['font_size'], str):
@@ -134,8 +139,8 @@ class ConversionOptions:
         # Add any custom packages user wants
         packages.extend(self.custom_packages)
         
-        # Remove duplicates
-        return list(set(packages))
+        # Remove duplicates (keeping the order, which matters in LaTeX)
+        return list(dict.fromkeys(packages))
     
     # Basic validation
     def validate(self) -> bool:

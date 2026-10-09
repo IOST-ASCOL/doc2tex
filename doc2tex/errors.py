@@ -16,7 +16,7 @@ class FileNotFoundError(DocTeXError):
     pass
 
 
-class InvalidFileFormatError(DocTeXError):
+class InvalidFileFormatError(ConversionError):
     # When file format is wrong
     pass
 

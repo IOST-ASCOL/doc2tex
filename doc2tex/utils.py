@@ -12,6 +12,7 @@ from PIL import Image
 import hashlib
 
 from .errors import ImageProcessingError, UnicodeHandlingError
+from .symbols import TEXT_FALLBACKS
 
 
 # Setup logging
@@ -51,30 +52,34 @@ LATEX_SPECIAL_CHARS = {
 
 def escape_latex(text: str) -> str:
     # Escape special characters for LaTeX
-    # Otherwise LaTeX will throw errors
+    # Otherwise LaTeX will throw errors.
+    # Done in a single pass so the output of one replacement
+    # (like the braces in \textbackslash{}) never gets escaped again.
+    # Symbols pdflatex can't print in text (α, ≤, →, ...) become math commands.
     if not text:
         return ""
-    
-    # Handle backslash first to avoid double-escaping
-    text = text.replace('\\', r'\textbackslash{}')
-    
-    # Escape other special characters
-    for char, escaped in LATEX_SPECIAL_CHARS.items():
-        if char != '\\':  # already handled
-            text = text.replace(char, escaped)
-    
-    return text
+    return ''.join(_ESCAPES.get(ch, ch) for ch in text)
+
+
+_ESCAPES = {**TEXT_FALLBACKS, **LATEX_SPECIAL_CHARS}
 
 
 def unescape_latex(text: str) -> str:
-    # Reverse the escaping process
+    # Reverse the escaping process (single pass, longest commands first)
     if not text:
         return ""
-    
-    for char, escaped in LATEX_SPECIAL_CHARS.items():
-        text = text.replace(escaped, char)
-    
-    return text
+    return _UNESCAPE_RE.sub(lambda m: _UNESCAPE_MAP[m.group(0)], text)
+
+
+_UNESCAPE_MAP = {escaped: char for char, escaped in LATEX_SPECIAL_CHARS.items()}
+_UNESCAPE_MAP.update({
+    r'\textasciitilde': '~',
+    r'\textasciicircum': '^',
+    r'\textbackslash': '\\',
+})
+_UNESCAPE_RE = re.compile(
+    '|'.join(re.escape(k) for k in sorted(_UNESCAPE_MAP, key=len, reverse=True))
+)
 
 
 def sanitize_filename(filename: str) -> str:

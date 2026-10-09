@@ -160,7 +160,7 @@ body {
 
 .options-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 15px;
     margin-bottom: 15px;
 }
@@ -273,4 +273,15 @@ body {
     padding: 40px 0;
     color: #94a3b8;
     font-size: 0.9rem;
+}
+/* Things that didn't convert cleanly (missing images, unknown references...) */
+.result-warnings {
+    text-align: left;
+    margin: 0 auto 16px;
+    padding: 10px 14px 10px 30px;
+    max-width: 480px;
+    font-size: 0.85rem;
+    color: #8a5a00;
+    background: #fff8e6;
+    border-radius: 8px;
 }

@@ -75,8 +75,11 @@ convertBtn.onclick = async () => {
     formData.append('file', selectedFile);
     formData.append('doc_type', document.getElementById('docType').value);
     formData.append('font_size', document.getElementById('fontSize').value);
+    formData.append('line_spacing', document.getElementById('lineSpacing').value);
     formData.append('extract_bib', document.getElementById('extractBib').checked);
     formData.append('unicode_support', document.getElementById('unicodeSupport').checked);
+    formData.append('body_only', document.getElementById('bodyOnly').checked);
+    formData.append('number_sections', document.getElementById('numberSections').checked);
 
     // Show progress bar
     progress.style.display = 'block';
@@ -95,7 +98,15 @@ convertBtn.onclick = async () => {
         if (response.ok && data.success) {
             progressBar.style.width = '100%';
             result.style.display = 'block';
-            resultText.innerText = `Conversion complete! (${data.output_size})`;
+            resultText.innerText = `Conversion complete! ${data.output_filename} (${data.output_size})`;
+            const warningList = document.getElementById('resultWarnings');
+            warningList.innerHTML = '';
+            (data.warnings || []).forEach((w) => {
+                const li = document.createElement('li');
+                li.innerText = w;
+                warningList.appendChild(li);
+            });
+            warningList.style.display = (data.warnings || []).length ? 'block' : 'none';
             document.getElementById('downloadBtn').onclick = () => {
                 window.location.href = data.download_url;
             };

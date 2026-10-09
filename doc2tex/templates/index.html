@@ -45,15 +45,15 @@
             <div class="features-grid">
                 <div class="feature-card">
                     <h3>DOCX to LaTeX</h3>
-                    <p>Handles headings, bold, italics, and lists automatically.</p>
+                    <p>Handles headings, bold, italics, lists, links and images automatically.</p>
                 </div>
                 <div class="feature-card">
                     <h3>LaTeX to DOCX</h3>
                     <p>Extracts text and formatting from .tex files back into Word.</p>
                 </div>
                 <div class="feature-card">
-                    <h3>Table Support</h3>
-                    <p>Basic conversion for simple tabular data in both directions.</p>
+                    <h3>Tables, Equations &amp; References</h3>
+                    <p>Tables with merged cells, Word equations to LaTeX math, numbered figures, citations and cross references.</p>
                 </div>
                 <div class="feature-card">
                     <h3>Local Processing</h3>
@@ -99,6 +99,8 @@
                                 <option value="article">Article</option>
                                 <option value="report">Report</option>
                                 <option value="thesis">Thesis</option>
+                                <option value="book">Book</option>
+                                <option value="letter">Letter</option>
                             </select>
                         </div>
                         <div class="option-group">
@@ -107,6 +109,14 @@
                                 <option value="10pt">10pt</option>
                                 <option value="11pt">11pt</option>
                                 <option value="12pt" selected>12pt</option>
+                            </select>
+                        </div>
+                        <div class="option-group">
+                            <label>Line Spacing</label>
+                            <select id="lineSpacing" class="select">
+                                <option value="single" selected>Single</option>
+                                <option value="onehalf">1.5</option>
+                                <option value="double">Double</option>
                             </select>
                         </div>
                     </div>
@@ -119,6 +129,14 @@
                         <label class="checkbox">
                             <input type="checkbox" id="unicodeSupport" checked>
                             <span>Unicode Support</span>
+                        </label>
+                        <label class="checkbox" title="Word to LaTeX: skip the preamble so you can \input the result into your own template">
+                            <input type="checkbox" id="bodyOnly">
+                            <span>Body only (no preamble)</span>
+                        </label>
+                        <label class="checkbox" title="LaTeX to Word: number sections, figures, tables and equations">
+                            <input type="checkbox" id="numberSections" checked>
+                            <span>Number sections</span>
                         </label>
                     </div>
                 </div>
@@ -135,6 +153,7 @@
                 <div class="result" id="result" style="display: none;">
                     <h3 class="result-title">Success!</h3>
                     <p class="result-text" id="resultText"></p>
+                    <ul class="result-warnings" id="resultWarnings" style="display: none;"></ul>
                     <button class="btn-download" id="downloadBtn">Download</button>
                     <button class="btn-secondary" id="convertAnother">New Convert</button>
                 </div>
@@ -150,7 +169,7 @@
 
     <footer class="footer">
         <div class="container">
-            <p>doc2tex - Undergrad Engineering Project</p>
+            <p>doc2tex v{{ version }} - Undergrad Engineering Project</p>
         </div>
     </footer>
 
